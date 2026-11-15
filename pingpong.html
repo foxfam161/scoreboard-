@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- iPad / iOS Web App Full-Screen Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Ping Pong">
+    <title>Ping Pong Voice Scoreboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation; /* Prevents double-tap zoom on iPad */
+            -webkit-user-select: none; /* Prevents accidental text highlighting */
+            user-select: none;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 14px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .mic-active {
+            animation: pulse-ring 1.8s infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-white min-h-screen flex flex-col justify-between overflow-hidden p-4 sm:p-6">
+
+    <!-- Top Header & Controls -->
+    <header class="flex flex-wrap items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 rounded-2xl p-3 sm:px-5 shadow-lg">
+        <div class="flex items-center gap-3">
+            <!-- Ping Pong Paddle Icon -->
+            <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="10" cy="10" r="7"/>
+                    <path d="M15 15l6 6"/>
+                    <circle cx="19" cy="6" r="2" fill="currentColor"/>
+                </svg>
+            </div>
+            <div>
+                <h1 class="font-extrabold text-lg sm:text-xl tracking-tight leading-none">TABLE TENNIS</h1>
+                <span class="text-xs text-slate-400 font-medium">Voice & Touch Scoreboard</span>
+            </div>
+        </div>
+
+        <!-- Game Mode & Action Controls -->
+        <div class="flex items-center gap-2 sm:gap-3">
+            <button id="modeToggleBtn" onclick="toggleGameMode()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs sm:text-sm font-bold text-slate-200 transition active:scale-95">
+                Play to: <span id="targetScoreLabel" class="text-emerald-400">21</span>
+            </button>
+
+            <button onclick="switchServerManually()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs sm:text-sm font-bold text-slate-200 transition active:scale-95" title="Switch Server">
+                Swap Serve
+            </button>
+
+            <button onclick="undoLastAction()" id="undoBtn" disabled class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 border border-slate-700 text-xs sm:text-sm font-bold text-slate-200 transition active:scale-95">
+                Undo
+            </button>
+
+            <button onclick="confirmReset()" class="px-3 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900/70 border border-rose-800/60 text-xs sm:text-sm font-bold text-rose-300 transition active:scale-95">
+                Reset
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Scoreboard Area (Two Big Tap Cards for iPad) -->
+    <main class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 my-4">
+        
+        <!-- Player 1 Card (Left / Blue) -->
+        <div id="p1Card" onclick="addPoint(1)" class="relative flex flex-col items-center justify-between rounded-3xl bg-gradient-to-b from-blue-900/50 to-slate-900 border-2 border-blue-500/40 p-6 sm:p-8 cursor-pointer transition-all duration-200 active:scale-[0.98] shadow-2xl">
+            
+            <!-- Top Row: Editable Name & Serve Badge -->
+            <div class="w-full flex items-center justify-between gap-2 z-10" onclick="event.stopPropagation()">
+                <input id="p1Name" type="text" value="Player 1" maxlength="16" onchange="updateStatusBanner()"
+                    class="bg-transparent border-b border-transparent hover:border-blue-400/50 focus:border-blue-400 focus:outline-none text-xl sm:text-3xl font-extrabold text-blue-200 w-44 sm:w-56 px-1 py-0.5 rounded">
+                
+                <span id="p1ServeBadge" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider shadow-md">
+                    <span class="w-2.5 h-2.5 rounded-full bg-slate-950 animate-ping"></span>
+                    SERVING
+                </span>
+            </div>
+
+            <!-- Giant Score Number -->
+            <div id="p1Score" class="text-[7.5rem] sm:text-[11rem] lg:text-[13rem] font-black leading-none tracking-tighter text-white drop-shadow-md my-auto">
+                0
+            </div>
+
+            <!-- Bottom Helper & Minus Button -->
+            <div class="w-full flex items-center justify-between text-slate-400 text-xs sm:text-sm font-semibold z-10">
+                <span>Tap anywhere on card to +1</span>
+                <button onclick="event.stopPropagation(); subtractPoint(1)" class="px-4 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700 active:scale-95">
+                    -1
+                </button>
+            </div>
+        </div>
+
+        <!-- Player 2 Card (Right / Emerald) -->
+        <div id="p2Card" onclick="addPoint(2)" class="relative flex flex-col items-center justify-between rounded-3xl bg-gradient-to-b from-emerald-900/40 to-slate-900 border-2 border-slate-800 p-6 sm:p-8 cursor-pointer transition-all duration-200 active:scale-[0.98] shadow-2xl">
+            
+            <!-- Top Row: Editable Name & Serve Badge -->
+            <div class="w-full flex items-center justify-between gap-2 z-10" onclick="event.stopPropagation()">
+                <input id="p2Name" type="text" value="Player 2" maxlength="16" onchange="updateStatusBanner()"
+                    class="bg-transparent border-b border-transparent hover:border-emerald-400/50 focus:border-emerald-400 focus:outline-none text-xl sm:text-3xl font-extrabold text-emerald-200 w-44 sm:w-56 px-1 py-0.5 rounded">
+                
+                <span id="p2ServeBadge" class="hidden inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider shadow-md">
+                    <span class="w-2.5 h-2.5 rounded-full bg-slate-950 animate-ping"></span>
+                    SERVING
+                </span>
+            </div>
+
+            <!-- Giant Score Number -->
+            <div id="p2Score" class="text-[7.5rem] sm:text-[11rem] lg:text-[13rem] font-black leading-none tracking-tighter text-white drop-shadow-md my-auto">
+                0
+            </div>
+
+            <!-- Bottom Helper & Minus Button -->
+            <div class="w-full flex items-center justify-between text-slate-400 text-xs sm:text-sm font-semibold z-10">
+                <span>Tap anywhere on card to +1</span>
+                <button onclick="event.stopPropagation(); subtractPoint(2)" class="px-4 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700 active:scale-95">
+                    -1
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Bottom Voice Control Bar -->
+    <footer class="bg-slate-900/95 border border-slate-800 rounded-2xl p-3 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
+        
+        <!-- Voice Mic Toggle Button -->
+        <div class="flex items-center gap-4 w-full sm:w-auto">
+            <button id="micBtn" onclick="toggleVoiceRecognition()" class="flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 font-extrabold text-sm sm:text-base transition w-full sm:w-auto">
+                <svg id="micIcon" class="w-5 h-5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" x2="12" y1="19" y2="22"/>
+                </svg>
+                <span id="micBtnText">Start Voice Control</span>
+            </button>
+        </div>
+
+        <!-- Live Transcript & Instruction Feedback -->
+        <div class="flex-1 text-center sm:text-right overflow-hidden">
+            <p id="voiceFeedback" class="text-sm sm:text-base font-semibold text-slate-200 truncate">
+                Tap "Start Voice Control" and say: <span class="text-amber-300">"Score is 17 to 15"</span>
+            </p>
+            <p class="text-xs text-slate-400 mt-0.5">
+                Server's score is always spoken first • Also supports <span class="text-slate-300">"Point Player 1"</span>, <span class="text-slate-300">"Undo"</span>, or <span class="text-slate-300">"Reset"</span>
+            </p>
+        </div>
+
+    </footer>
+
+    <!-- Winner / Reset Modal Overlay (Custom UI, never alert()) -->
+    <div id="modalOverlay" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 sm:p-8 text-center shadow-2xl">
+            <div id="modalBadge" class="inline-block px-3 py-1 rounded-full bg-amber-400/20 text-amber-300 font-bold text-xs uppercase tracking-wider mb-3">
+                Match Complete
+            </div>
+            <h2 id="modalTitle" class="text-2xl sm:text-3xl font-black text-white mb-2">Player 1 Wins!</h2>
+            <p id="modalSubtitle" class="text-slate-300 text-sm sm:text-base mb-6">Final Score: 21 - 18</p>
+            <div class="flex gap-3 justify-center">
+                <button id="modalCancelBtn" onclick="closeModal()" class="px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold flex-1">
+                    Keep Playing
+                </button>
+                <button id="modalConfirmBtn" onclick="resetGame()" class="px-5 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold flex-1">
+                    New Game
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. STATE & TABLE TENNIS RULES
+        // ==========================================
+        let state = {
+            p1: 0,
+            p2: 0,
+            server: 1,         // 1 for Player 1, 2 for Player 2
+            initialServer: 1,  // Who served at 0-0
+            targetScore: 21,   // 21 (5-point serve rotation) or 11 (2-point serve rotation)
+            history: []
+        };
+
+        // Load saved match from localStorage (works offline!)
+        function loadSavedState() {
+            try {
+                const saved = localStorage.getItem('pingPongScoreState');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    state = { ...state, ...parsed, history: [] };
+                }
+                const savedNames = localStorage.getItem('pingPongPlayerNames');
+                if (savedNames) {
+                    const names = JSON.parse(savedNames);
+                    document.getElementById('p1Name').value = names.p1 || 'Player 1';
+                    document.getElementById('p2Name').value = names.p2 || 'Player 2';
+                }
+            } catch (e) {
+                console.warn('Could not load saved state', e);
+            }
+        }
+
+        function saveState() {
+            try {
+                localStorage.setItem('pingPongScoreState', JSON.stringify({
+                    p1: state.p1,
+                    p2: state.p2,
+                    server: state.server,
+                    initialServer: state.initialServer,
+                    targetScore: state.targetScore
+                }));
+                localStorage.setItem('pingPongPlayerNames', JSON.stringify({
+                    p1: document.getElementById('p1Name').value.trim() || 'Player 1',
+                    p2: document.getElementById('p2Name').value.trim() || 'Player 2'
+                }));
+            } catch (e) {}
+        }
+
+        // Save snapshot for Undo
+        function pushHistory() {
+            state.history.push({
+                p1: state.p1,
+                p2: state.p2,
+                server: state.server,
+                initialServer: state.initialServer
+            });
+            if (state.history.length > 30) state.history.shift();
+            document.getElementById('undoBtn').disabled = false;
+        }
+
+        // Calculate automatic serve rotation based on total points played
+        function recalculateServerFromTotal() {
+            const totalPoints = state.p1 + state.p2;
+            const deuceThreshold = state.targetScore - 1; // 20 for 21-pt game, 10 for 11-pt game
+            const standardServeBlock = state.targetScore === 21 ? 5 : 2;
+
+            // At deuce (e.g., 20-20 or 10-10), serve alternates every 1 point
+            if (state.p1 >= deuceThreshold && state.p2 >= deuceThreshold) {
+                const extraPoints = totalPoints - (deuceThreshold * 2);
+                const blocks = Math.floor(extraPoints);
+                state.server = (blocks % 2 === 0) ? state.initialServer : (state.initialServer === 1 ? 2 : 1);
+            } else {
+                const blocks = Math.floor(totalPoints / standardServeBlock);
+                state.server = (blocks % 2 === 0) ? state.initialServer : (state.initialServer === 1 ? 2 : 1);
+            }
+        }
+
+        // ==========================================
+        // 2. SCORE ACTIONS & VOICE SERVE LOGIC
+        // ==========================================
+        function addPoint(player) {
+            pushHistory();
+            if (player === 1) state.p1++;
+            else state.p2++;
+
+            recalculateServerFromTotal();
+            render();
+            checkWinCondition();
+        }
+
+        function subtractPoint(player) {
+            if ((player === 1 && state.p1 === 0) || (player === 2 && state.p2 === 0)) return;
+            pushHistory();
+            if (player === 1) state.p1--;
+            else state.p2--;
+
+            recalculateServerFromTotal();
+            render();
+        }
+
+        function switchServerManually() {
+            pushHistory();
+            state.server = state.server === 1 ? 2 : 1;
+            // Adjust initialServer so future point additions stay in sync with this manual override
+            syncInitialServerWithCurrent();
+            render();
+            announceFeedback(`Serve switched to ${getPlayerName(state.server)}`);
+        }
+
+        // Ensures that if a user says "17 to 15", the current server gets 17,
+        // and future automatic serve rotations count cleanly from this point forward.
+        function syncInitialServerWithCurrent() {
+            const totalPoints = state.p1 + state.p2;
+            const deuceThreshold = state.targetScore - 1;
+            const standardServeBlock = state.targetScore === 21 ? 5 : 2;
+
+            let blocks = 0;
+            if (state.p1 >= deuceThreshold && state.p2 >= deuceThreshold) {
+                blocks = totalPoints - (deuceThreshold * 2);
+            } else {
+                blocks = Math.floor(totalPoints / standardServeBlock);
+            }
+            // If blocks is even, initialServer === current server; if odd, opposite
+            state.initialServer = (blocks % 2 === 0) ? state.server : (state.server === 1 ? 2 : 1);
+        }
+
+        /**
+         * Core Requirement:
+         * When the user says "The score is 17 to 15", the FIRST number (17)
+         * belongs to whoever is currently SERVING, and the SECOND number (15)
+         * belongs to the receiver!
+         */
+        function applySpokenScore(firstNum, secondNum) {
+            pushHistory();
+            if (state.server === 1) {
+                state.p1 = firstNum;
+                state.p2 = secondNum;
+            } else {
+                state.p2 = firstNum;
+                state.p1 = secondNum;
+            }
+
+            // Keep the current server aligned with the spoken server-first call,
+            // or check if a serve rotation just occurred on the point that reached this score.
+            // Because the speaker explicitly called the server's score first, the current server
+            // is the one whose score was stated first!
+            syncInitialServerWithCurrent();
+            render();
+            checkWinCondition();
+
+            const serverName = getPlayerName(state.server);
+            const receiverName = getPlayerName(state.server === 1 ? 2 : 1);
+            announceFeedback(`Updated: ${serverName} (Serving) ${firstNum} – ${secondNum} ${receiverName}`);
+        }
+
+        function undoLastAction() {
+            if (state.history.length === 0) return;
+            const prev = state.history.pop();
+            state.p1 = prev.p1;
+            state.p2 = prev.p2;
+            state.server = prev.server;
+            state.initialServer = prev.initialServer;
+            document.getElementById('undoBtn').disabled = state.history.length === 0;
+            render();
+            announceFeedback('Last score change undone');
+        }
+
+        function toggleGameMode() {
+            state.targetScore = state.targetScore === 21 ? 11 : 21;
+            recalculateServerFromTotal();
+            render();
+            announceFeedback(`Switched to ${state.targetScore}-point game`);
+        }
+
+        function checkWinCondition() {
+            const target = state.targetScore;
+            if ((state.p1 >= target || state.p2 >= target) && Math.abs(state.p1 - state.p2) >= 2) {
+                const winner = state.p1 > state.p2 ? 1 : 2;
+                showModal(
+                    'Game Over!',
+                    `${getPlayerName(winner)} Wins!`,
+                    `Final Score: ${state.p1} to ${state.p2}`
+                );
+            }
+        }
+
+        // ==========================================
+        // 3. UI RENDERING & MODALS
+        // ==========================================
+        function getPlayerName(num) {
+            const val = document.getElementById(`p${num}Name`).value.trim();
+            return val || `Player ${num}`;
+        }
+
+        function updateStatusBanner() {
+            saveState();
+        }
+
+        function render() {
+            document.getElementById('p1Score').textContent = state.p1;
+            document.getElementById('p2Score').textContent = state.p2;
+            document.getElementById('targetScoreLabel').textContent = state.targetScore;
+
+            const p1Card = document.getElementById('p1Card');
+            const p2Card = document.getElementById('p2Card');
+            const p1Badge = document.getElementById('p1ServeBadge');
+            const p2Badge = document.getElementById('p2ServeBadge');
+
+            if (state.server === 1) {
+                p1Badge.classList.remove('hidden');
+                p2Badge.classList.add('hidden');
+                p1Card.classList.add('border-amber-400', 'ring-4', 'ring-amber-400/20');
+                p1Card.classList.remove('border-blue-500/40');
+                p2Card.classList.remove('border-amber-400', 'ring-4', 'ring-amber-400/20');
+                p2Card.classList.add('border-slate-800');
+            } else {
+                p2Badge.classList.remove('hidden');
+                p1Badge.classList.add('hidden');
+                p2Card.classList.add('border-amber-400', 'ring-4', 'ring-amber-400/20');
+                p2Card.classList.remove('border-slate-800');
+                p1Card.classList.remove('border-amber-400', 'ring-4', 'ring-amber-400/20');
+                p1Card.classList.add('border-blue-500/40');
+            }
+
+            saveState();
+        }
+
+        function showModal(badge, title, subtitle) {
+            document.getElementById('modalBadge').textContent = badge;
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalSubtitle').textContent = subtitle;
+            document.getElementById('modalOverlay').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('modalOverlay').classList.add('hidden');
+        }
+
+        function confirmReset() {
+            showModal('Reset Match', 'Start a New Game?', 'This will reset both scores back to 0 - 0.');
+        }
+
+        function resetGame() {
+            pushHistory();
+            state.p1 = 0;
+            state.p2 = 0;
+            state.server = 1;
+            state.initialServer = 1;
+            closeModal();
+            render();
+            announceFeedback('Scoreboard reset to 0 - 0');
+        }
+
+        function announceFeedback(message) {
+            const el = document.getElementById('voiceFeedback');
+            el.innerHTML = `<span class="text-emerald-400 font-bold">✓</span> ${message}`;
+        }
+
+        // ==========================================
+        // 4. VOICE RECOGNITION (iPad Safari & Chrome)
+        // ==========================================
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        let isListening = false;
+
+        // Convert spoken number words ("zero" through "thirty") into integers
+        const wordToNumMap = {
+            'zero': 0, 'love': 0, 'oh': 0,
+            'one': 1, 'won': 1,
+            'two': 2, 'to': 2, 'too': 2,
+            'three': 3,
+            'four': 4, 'for': 4,
+            'five': 5,
+            'six': 6,
+            'seven': 7,
+            'eight': 8, 'ate': 8,
+            'nine': 9,
+            'ten': 10,
+            'eleven': 11,
+            'twelve': 12,
+            'thirteen': 13,
+            'fourteen': 14,
+            'fifteen': 15,
+            'sixteen': 16,
+            'seventeen': 17,
+            'eighteen': 18,
+            'nineteen': 19,
+            'twenty': 20,
+            'twenty-one': 21, 'twenty one': 21,
+            'twenty-two': 22, 'twenty two': 22,
+            'twenty-three': 23, 'twenty three': 23,
+            'twenty-four': 24, 'twenty four': 24,
+            'twenty-five': 25, 'twenty five': 25,
+            'twenty-six': 26, 'twenty six': 26,
+            'twenty-seven': 27, 'twenty seven': 27,
+            'twenty-eight': 28, 'twenty eight': 28,
+            'twenty-nine': 29, 'twenty nine': 29,
+            'thirty': 30
+        };
+
+        function normalizeSpokenNumbers(text) {
+            let clean = text.toLowerCase().trim();
+            // Replace hyphenated or multi-word numbers first (e.g. "twenty one")
+            const sortedKeys = Object.keys(wordToNumMap).sort((a, b) => b.length - a.length);
+            for (const word of sortedKeys) {
+                // Only replace standalone words, avoiding "to" when between two digits like "17 to 15"
+                if (word === 'to' || word === 'too' || word === 'for') continue;
+                const regex = new RegExp(`\\b${word}\\b`, 'g');
+                clean = clean.replace(regex, wordToNumMap[word]);
+            }
+            return clean;
+        }
+
+        function processVoiceCommand(rawTranscript) {
+            const feedbackEl = document.getElementById('voiceFeedback');
+            feedbackEl.innerHTML = `<span class="text-slate-400">Heard:</span> "<span class="text-white font-bold">${rawTranscript}</span>"`;
+
+            const lower = rawTranscript.toLowerCase().trim();
+
+            // 1. Check for utility commands
+            if (lower.includes('undo') || lower.includes('go back')) {
+                undoLastAction();
+                return;
+            }
+            if (lower.includes('reset') || lower.includes('new game')) {
+                resetGame();
+                return;
+            }
+            if (lower.includes('switch serve') || lower.includes('swap serve') || lower.includes('change serve')) {
+                switchServerManually();
+                return;
+            }
+
+            // 2. Check for "Point Player 1" / "Point Player 2" or custom player names
+            const p1Name = getPlayerName(1).toLowerCase();
+            const p2Name = getPlayerName(2).toLowerCase();
+            if (lower.includes('point')) {
+                if (lower.includes('player 1') || lower.includes('player one') || (p1Name !== 'player 1' && lower.includes(p1Name))) {
+                    addPoint(1);
+                    announceFeedback(`+1 Point to ${getPlayerName(1)}`);
+                    return;
+                }
+                if (lower.includes('player 2') || lower.includes('player two') || (p2Name !== 'player 2' && lower.includes(p2Name))) {
+                    addPoint(2);
+                    announceFeedback(`+1 Point to ${getPlayerName(2)}`);
+                    return;
+                }
+            }
+
+            // 3. Parse two score numbers (e.g., "the score is 17 to 15", "17 15", "17-15", "17 all")
+            const normalized = normalizeSpokenNumbers(lower);
+
+            // Handle "X all" (e.g., "15 all" or "20 all")
+            const allMatch = normalized.match(/\b(\d{1,2})\s+all\b/);
+            if (allMatch) {
+                const tiedScore = parseInt(allMatch[1], 10);
+                if (tiedScore >= 0 && tiedScore <= 50) {
+                    applySpokenScore(tiedScore, tiedScore);
+                    return;
+                }
+            }
+
+            // Extract all numbers in the spoken phrase
+            const numbers = normalized.match(/\b\d{1,2}\b/g);
+            if (numbers && numbers.length >= 2) {
+                const firstScore = parseInt(numbers[0], 10);
+                const secondScore = parseInt(numbers[1], 10);
+                if (firstScore >= 0 && firstScore <= 50 && secondScore >= 0 && secondScore <= 50) {
+                    applySpokenScore(firstScore, secondScore);
+                    return;
+                }
+            }
+        }
+
+        function initSpeechRecognition() {
+            if (!SpeechRecognition) {
+                document.getElementById('voiceFeedback').innerHTML =
+                    `<span class="text-amber-400">Voice recognition isn't supported in this browser. Use Safari on iPadOS 14.5+ or tap the score cards!</span>`;
+                document.getElementById('micBtn').disabled = true;
+                document.getElementById('micBtn').classList.add('opacity-50');
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.lang = 'en-US';
+            recognition.continuous = true;
+            recognition.interimResults = false;
+
+            recognition.onstart = () => {
+                isListening = true;
+                updateMicUI();
+            };
+
+            recognition.onresult = (event) => {
+                const lastResultIndex = event.results.length - 1;
+                const transcript = event.results[lastResultIndex][0].transcript;
+                processVoiceCommand(transcript);
+            };
+
+            recognition.onerror = (event) => {
+                if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                    isListening = false;
+                    updateMicUI();
+                    const isIframe = window.self !== window.top;
+                    document.getElementById('voiceFeedback').innerHTML = isIframe
+                        ? `<span class="text-rose-400 font-bold">Blocked by host iframe (e.g., Google Sites).</span> Host directly on Netlify Drop or GitHub Pages for mic access!`
+                        : `<span class="text-rose-400 font-bold">Microphone blocked.</span> Tap the lock/site icon in your browser's address bar and allow Microphone.`;
+                } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+                    document.getElementById('voiceFeedback').innerHTML =
+                        `<span class="text-amber-400">Mic status: ${event.error}. Retrying...</span>`;
+                }
+            };
+
+            // iPad Safari automatically stops continuous speech recognition after a pause;
+// ... existing code ... -->
+        async function toggleVoiceRecognition() {
+            if (!recognition) return;
+            if (isListening) {
+                isListening = false;
+                recognition.stop();
+                updateMicUI();
+                document.getElementById('voiceFeedback').innerHTML =
+                    `Voice paused. Tap <span class="text-white font-semibold">"Start Voice Control"</span> to resume.`;
+            } else {
+                // Explicitly request microphone access first to trigger the browser's native permission prompt
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        // Stop the raw stream immediately so SpeechRecognition can claim the mic cleanly
+                        stream.getTracks().forEach(track => track.stop());
+                    } catch (err) {
+                        const isIframe = window.self !== window.top;
+                        document.getElementById('voiceFeedback').innerHTML = isIframe
+                            ? `<span class="text-rose-400 font-bold">Blocked by Google Sites / iframe!</span> Open via Netlify Drop or GitHub Pages instead.`
+                            : `<span class="text-rose-400 font-bold">Mic permission denied (${err.name}).</span> Allow microphone access in browser settings.`;
+                        return;
+                    }
+                }
+
+                isListening = true;
+                try {
+                    recognition.start();
+                } catch (e) {}
+                updateMicUI();
+                document.getElementById('voiceFeedback').innerHTML =
+                    `<span class="text-emerald-400 font-bold">Listening...</span> Say <span class="text-amber-300">"Score is 17 to 15"</span>`;
+            }
+        }
+
+        function updateMicUI() {
+            const btn = document.getElementById('micBtn');
+            const text = document.getElementById('micBtnText');
+            if (isListening) {
+                btn.classList.remove('bg-slate-800', 'border-slate-700');
+                btn.classList.add('bg-rose-600', 'border-rose-400', 'text-white', 'mic-active');
+                text.textContent = 'Listening... (Tap to Mute)';
+            } else {
+                btn.classList.add('bg-slate-800', 'border-slate-700');
+                btn.classList.remove('bg-rose-600', 'border-rose-400', 'text-white', 'mic-active');
+                text.textContent = 'Start Voice Control';
+            }
+        }
+
+        // Initialize app on load
+        window.onload = () => {
+            loadSavedState();
+            render();
+            initSpeechRecognition();
+        };
+    </script>
+</body>
+</html>
