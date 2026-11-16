@@ -586,39 +586,50 @@
                 }
             };
 
-            // iPad Safari automatically stops continuous speech recognition after a pause;
-// ... existing code ... -->
-        async function toggleVoiceRecognition() {
-            if (!recognition) return;
+            // iPad Safari and Android Chrome automatically stop continuous speech recognition after a pause;
+            // restart it seamlessly if the user hasn't muted it.
+            recognition.onend = () => {
+                if (isListening) {
+                    setTimeout(() => {
+                        if (!isListening) return;
+                        try {
+                            recognition.start();
+                        } catch (e) {}
+                    }, 250);
+                }
+            };
+        }
+
+        function toggleVoiceRecognition() {
+            if (!recognition) {
+                document.getElementById('voiceFeedback').innerHTML =
+                    `<span class="text-amber-400">Speech recognition is not supported in this browser.</span>`;
+                return;
+            }
+
             if (isListening) {
                 isListening = false;
-                recognition.stop();
+                try {
+                    recognition.stop();
+                } catch (e) {}
                 updateMicUI();
                 document.getElementById('voiceFeedback').innerHTML =
                     `Voice paused. Tap <span class="text-white font-semibold">"Start Voice Control"</span> to resume.`;
             } else {
-                // Explicitly request microphone access first to trigger the browser's native permission prompt
-                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                    try {
-                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                        // Stop the raw stream immediately so SpeechRecognition can claim the mic cleanly
-                        stream.getTracks().forEach(track => track.stop());
-                    } catch (err) {
-                        const isIframe = window.self !== window.top;
-                        document.getElementById('voiceFeedback').innerHTML = isIframe
-                            ? `<span class="text-rose-400 font-bold">Blocked by Google Sites / iframe!</span> Open via Netlify Drop or GitHub Pages instead.`
-                            : `<span class="text-rose-400 font-bold">Mic permission denied (${err.name}).</span> Allow microphone access in browser settings.`;
-                        return;
-                    }
-                }
-
+                // Call recognition.start() synchronously inside the user tap event so Android Chrome
+                // and iPad Safari immediately trigger the native microphone permission prompt.
                 isListening = true;
                 try {
                     recognition.start();
-                } catch (e) {}
-                updateMicUI();
-                document.getElementById('voiceFeedback').innerHTML =
-                    `<span class="text-emerald-400 font-bold">Listening...</span> Say <span class="text-amber-300">"Score is 17 to 15"</span>`;
+                    updateMicUI();
+                    document.getElementById('voiceFeedback').innerHTML =
+                        `<span class="text-emerald-400 font-bold">Listening...</span> Say <span class="text-amber-300">"Score is 17 to 15"</span>`;
+                } catch (e) {
+                    isListening = false;
+                    updateMicUI();
+                    document.getElementById('voiceFeedback').innerHTML =
+                        `<span class="text-rose-400 font-bold">Could not start mic:</span> ${e.message}`;
+                }
             }
         }
 
